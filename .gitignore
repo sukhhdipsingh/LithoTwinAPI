@@ -1,0 +1,19 @@
+# dotnet
+bin/
+obj/
+*.user
+*.suo
+*.Cache
+*.log
+
+# IDE
+.vs/
+.vscode/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
+
+# build output
+TestResults/
