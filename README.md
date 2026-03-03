@@ -1,108 +1,221 @@
-# LithoTwin API
+#  LithoTwin API
 
-REST API that simulates telemetry monitoring, EUV exposure, and wafer routing for lithography machines. Built to explore .NET backend patterns applied to semiconductor manufacturing.
+**REST API that simulates real-time monitoring and control of EUV lithography machines.**  
+Built with .NET 7 / ASP.NET Core — telemetry, thermal management, exposure simulation, and predictive maintenance for a virtual semiconductor fab.
 
-## What it does
+> Think of it as a digital twin for ASML-style lithography tools: machines heat up, batches get routed, overlays drift, and the system reacts autonomously.
 
-- **Telemetry ingestion** — receives temperature readings, triggers auto-cooling on overheat with 2°C hysteresis
-- **Exposure simulation** — runs simulated EUV exposures with dose/focus, computes overlay error based on thermal state
-- **Wafer routing** — assigns batches to the coldest active machine for max thermal headroom
-- **Batch lifecycle** — track batches from creation through processing to completion
-- **Reticle management** — tracks mask contamination and usage, flags when replacement is needed
-- **Machine health scoring** — weighted score (0-100) factoring temperature, uptime, and state
-- **Maintenance prediction** — estimates when a machine needs maintenance, monitors overlay drift
-- **Live alert stream** — SSE endpoint that pushes new alerts in real time
-- **Thermal drift** — background service that simulates temperature changes, the system is "alive"
-- **Trend detection** — analyzes recent telemetry to detect rising/falling/stable trends
-- **CSV export** — download telemetry history as CSV for offline analysis
+---
 
-## Quick start
+## What You're Looking At
 
-```bash
-dotnet run
+It's a "living" API. A background service (`ThermalDriftService`) constantly heats up the machines based on usage.
+If you send a `POST /exposure` request to a machine that is too hot, the physics engine calculates an overlay error (nanometers of drift) and fails the batch.
+
+<p align="center">
+  <img src="docs/full.png" alt="Swagger UI — API overview" width="700"/>
+</p>
+
+## Some Examples:
+GET Reticle
+
+<p align="center">
+  <img src="docs/reticle.png" alt="Swagger UI — API overview" width="700"/>
+</p>
+
+
+
+---
+
+## Key Features & .NET Patterns Used
+
+###  Telemetry + Thermal Control
+- Ingest temperature readings, trigger **automatic cooling on overheat** with 2°C hysteresis
+- Background `ThermalDriftService` (`BackgroundService`) keeps machines "alive" with simulated temperature changes
+- **Trend detection** on recent readings (rising / falling / stable)
+
+```
+GET /api/factory/machines/NXE-3400B/health
+```
+```json
+{
+  "machineId": "NXE-3400B",
+  "overallScore": 62.2,
+  "comment": "running warm, keep an eye on it",
+  "breakdown": {
+    "temperature": { "score": 33.9, "weight": 0.5, "detail": "21.6°C / 24.0°C" },
+    "uptime":      { "score": 76.1, "weight": 0.2, "detail": "1248h" },
+    "state":       { "score": 100,  "weight": 0.3, "detail": "Active" }
+  }
+}
 ```
 
-Swagger UI at `http://localhost:5159/swagger`
+###  EUV Exposure Simulation
+- Simulated exposures with dose/focus parameters → computed **overlay error** based on thermal state
+- Overlay model: `0.08 nm/°C` thermal expansion + focus penalty + random noise
+- Alerts if overlay exceeds the 1.5nm spec limit
 
-## Run tests
-
-```bash
-dotnet test LithoTwinAPI.Tests
+```
+POST /api/exposure/run
+{ "machineId": "NXE-3400B", "doseEnergy": 30, "focusOffset": 0.5, "layerId": "M1" }
 ```
 
-## Endpoints
+###  Smart Wafer Routing
+- Wafer batches auto-assigned to the **coldest active machine** (max thermal headroom)
+- If no machines available → batch rerouted + system alert
+- Full batch lifecycle: created → processing → completed
 
-### Factory (`/api/factory`)
+###  Predictive Maintenance
+- Maintenance forecast based on uptime cycles + **overlay drift monitoring**
+- If recent exposures show degrading overlay → urgency bumped automatically
 
-| Method | Route | What it does |
-|--------|-------|--------------|
-| `POST` | `/telemetry?machineId=X&temperature=Y` | Push a temperature reading |
-| `GET`  | `/telemetry/{machineId}/history?count=50` | Temperature history |
-| `GET`  | `/telemetry/{machineId}/trend` | Rising / falling / stable |
-| `GET`  | `/telemetry/{machineId}/export` | Download CSV |
-| `POST` | `/route-wafer` | Assign a new wafer batch |
-| `POST` | `/batches/{id}/complete` | Mark batch as completed |
-| `GET`  | `/system-status` | All machines + current state |
-| `GET`  | `/machines/{machineId}/health` | Health score + breakdown |
-| `GET`  | `/machines/{machineId}/maintenance-prediction` | Maintenance forecast |
-| `GET`  | `/alerts` | Unacknowledged alerts |
-| `POST` | `/alerts/{id}/acknowledge` | Mark alert as handled |
-| `GET`  | `/stats` | Factory-wide statistics |
+```
+GET /api/factory/machines/NXE-3400B/maintenance-prediction
+```
+```json
+{
+  "machineId": "NXE-3400B",
+  "estimatedHoursUntilMaintenance": 752,
+  "urgency": "not_due",
+  "overlayDegrading": false
+}
+```
 
-### Exposure (`/api/exposure`)
+###  Live Alerts (SSE)
+- Server-Sent Events endpoint streams alerts in real time — open in browser and watch events flow
+- Overheat, cooling, overlay violations, routing failures
 
-| Method | Route | What it does |
-|--------|-------|--------------|
-| `POST` | `/run` | Run a simulated exposure (body: `{ machineId, doseEnergy, focusOffset, layerId }`) |
-| `GET`  | `/history?machineId=X` | Past exposure results with overlay errors |
+<p align="center">
+  <img src="docs/alerts.png" alt="Swagger UI — API overview" width="700"/>
+</p>
 
-### Reticles (`/api/reticle`)
+###  Factory Stats
 
-| Method | Route | What it does |
-|--------|-------|--------------|
-| `GET`  | `/` | List all reticles |
-| `GET`  | `/{id}` | Single reticle detail |
-| `POST` | `/{id}/inspect` | Simulate inspection (increases contamination) |
+```
+GET /api/factory/stats
+```
+```json
+{
+  "machines": { "total": 3, "active": 2, "cooling": 0, "maintenance": 1 },
+  "production": {
+    "totalExposures": 175710,
+    "totalWafersProcessed": 7028,
+    "avgTemperature": 22.3
+  }
+}
+```
 
-### Live (`/api/live`)
+---
 
-| Method | Route | What it does |
-|--------|-------|--------------|
-| `GET`  | `/alerts` | SSE stream of new alerts (open in browser) |
+## .NET Patterns Demonstrated
+
+| Pattern | Where |
+|---------|-------|
+| **Dependency Injection** | `IManufacturingService` → `ManufacturingService` via `AddScoped` |
+| **BackgroundService** | `ThermalDriftService` — long-running thermal simulation with scoped DB access |
+| **EF Core InMemory** | `AppDbContext` with seed data (3 ASML machines + 3 reticles) |
+| **Repository / Service Layer** | Controllers are thin, all logic lives in `ManufacturingService` |
+| **Server-Sent Events** | `LiveController` — manual SSE with `text/event-stream` |
+| **Async/Await** | Full async pipeline, controllers → services → EF Core queries |
+| **Exception → HTTP mapping** | `KeyNotFoundException` → 404, `InvalidOperationException` → 409 |
+| **Swagger / OpenAPI** | Auto-generated docs via Swashbuckle |
+| **xUnit Testing** | 17 tests covering core business logic |
+
+---
 
 ## Architecture
 
 ```
-Controllers
-├── FactoryController     — telemetry, routing, health, stats, maintenance
-├── ExposureController    — exposure simulation
-├── ReticleController     — reticle CRUD + inspection
-└── LiveController        — SSE alert stream
+Controllers/
+├── FactoryController      telemetry, routing, health, stats, maintenance
+├── ExposureController     exposure simulation with overlay model
+├── ReticleController      reticle CRUD + contamination tracking
+└── LiveController         SSE real-time alert stream
 
-Services
-├── ManufacturingService  — core business logic
-└── ThermalDriftService   — background thermal simulation (BackgroundService)
+Services/
+├── ManufacturingService   core business logic (~400 lines)
+└── ThermalDriftService    BackgroundService — simulates thermal drift
 
-Data
-└── AppDbContext           — EF Core InMemory, seeded with 3 machines + 3 reticles
+Data/
+└── AppDbContext            EF Core InMemory, seeded with ASML machine models
 
-Models
-├── Machine, WaferBatch, Alert
-├── TelemetryReading, ExposureRequest, ExposureResult
-└── Reticle
-
-Tests
-└── ManufacturingServiceTests — 17 xUnit tests covering core logic
+Models/
+├── Machine                state machine (Active → Cooling → Active)
+├── WaferBatch             batch lifecycle tracking
+├── ExposureResult         overlay error X/Y + pass/fail
+├── TelemetryReading       temperature time series
+├── Alert                  severity levels + acknowledgment
+└── Reticle                contamination + usage tracking
 ```
 
 Seeded machines: `NXE-3400B`, `NXE-3600D` (active), `TWINSCAN-EXE` (maintenance).
-Seeded reticles: `MASK-M1-v3`, `MASK-VIA1-v1`, `MASK-POLY-v2`.
+
+---
+
+## Quick Start
+
+```bash
+dotnet run
+# → Swagger UI at http://localhost:5159/swagger
+```
+
+```bash
+dotnet test LithoTwinAPI.Tests
+# → 17 tests passing
+```
 
 ## Stack
 
 - .NET 7 / ASP.NET Core
-- Entity Framework Core (InMemory)
-- xUnit for testing
-- Swashbuckle (Swagger)
+- Entity Framework Core (InMemory provider)
+- xUnit
+- Swashbuckle (Swagger / OpenAPI)
 - BackgroundService for thermal simulation
 - Server-Sent Events for live monitoring
+
+---
+
+## All Endpoints
+
+<details>
+<summary>Click to expand full endpoint list</summary>
+
+### Factory (`/api/factory`)
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `POST` | `/telemetry?machineId=X&temperature=Y` | Push temperature reading |
+| `GET`  | `/telemetry/{machineId}/history?count=50` | Temperature history |
+| `GET`  | `/telemetry/{machineId}/trend` | Trend detection |
+| `GET`  | `/telemetry/{machineId}/export` | CSV download |
+| `POST` | `/route-wafer` | Assign wafer batch |
+| `POST` | `/batches/{id}/complete` | Complete batch |
+| `GET`  | `/system-status` | All machines |
+| `GET`  | `/machines/{machineId}/health` | Health score |
+| `GET`  | `/machines/{machineId}/maintenance-prediction` | Maintenance forecast |
+| `GET`  | `/alerts` | Active alerts |
+| `POST` | `/alerts/{id}/acknowledge` | Acknowledge alert |
+| `GET`  | `/stats` | Factory stats |
+
+### Exposure (`/api/exposure`)
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `POST` | `/run` | Run exposure simulation |
+| `GET`  | `/history?machineId=X` | Exposure history |
+
+### Reticle (`/api/reticle`)
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET`  | `/` | List reticles |
+| `GET`  | `/{id}` | Reticle detail |
+| `POST` | `/{id}/inspect` | Simulate inspection |
+
+### Live (`/api/live`)
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET`  | `/alerts` | SSE stream |
+
+</details>
