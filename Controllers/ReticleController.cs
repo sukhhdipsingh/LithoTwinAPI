@@ -11,8 +11,6 @@ public class ReticleController : ControllerBase
 {
     private readonly AppDbContext _db;
 
-    // injecting DbContext directly — reticle logic is simple enough
-    // that wrapping it in a service felt pointless
     public ReticleController(AppDbContext db) => _db = db;
 
     [HttpGet]
@@ -28,9 +26,10 @@ public class ReticleController : ControllerBase
             : Ok(ret);
     }
 
-    /// simulates a reticle inspection. contamination goes up a bit each time
-    /// because handling always introduces particles. in reality you'd track
-    /// pellicle transmission degradation too, but that's a whole other thing
+    /// <summary>
+    /// Simulates a reticle inspection. Contamination increases with each handling cycle
+    /// due to particle deposition from outgassing and EUV photon exposure.
+    /// </summary>
     [HttpPost("{id}/inspect")]
     public async Task<IActionResult> Inspect(string id)
     {
@@ -46,10 +45,9 @@ public class ReticleController : ControllerBase
         return Ok(new
         {
             reticle = ret,
-            warning = !ret.IsUsable ? "reticle no longer meets usability criteria — consider replacement" : (string?)null
+            warning = !ret.IsUsable
+                ? "Reticle no longer meets usability criteria — schedule replacement"
+                : (string?)null
         });
     }
-
-    // maybe add a cleaning endpoint later? reticle cleaning is a real process
-    // where you can sometimes bring contamination back down. but not always
 }

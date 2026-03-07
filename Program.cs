@@ -1,14 +1,41 @@
 using LithoTwinAPI.Data;
 using LithoTwinAPI.Services;
+using LithoTwinAPI.Simulation;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<AppDbContext>(opt => opt.UseInMemoryDatabase("LithoTwinDB"));
-builder.Services.AddScoped<IManufacturingService, ManufacturingService>();
-builder.Services.AddHostedService<ThermalDriftService>();
+// Persistence: InMemory by default, SQLite when configured
+var useSqlite = builder.Configuration.GetValue<bool>("UseSqlite");
+if (useSqlite)
+{
+    builder.Services.AddDbContext<AppDbContext>(opt =>
+        opt.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")
+            ?? "Data Source=lithotwin.db"));
+}
+else
+{
+    builder.Services.AddDbContext<AppDbContext>(opt =>
+        opt.UseInMemoryDatabase("LithoTwinDB"));
+}
 
-builder.Services.AddControllers();
+// Services — each one owns a single behavioral domain
+builder.Services.AddScoped<MachineLifecycleService>();
+builder.Services.AddScoped<FaultService>();
+builder.Services.AddScoped<TelemetryService>();
+builder.Services.AddScoped<ExposureService>();
+builder.Services.AddScoped<AlertService>();
+
+// Simulation — background thermal drift engine
+builder.Services.AddHostedService<ThermalSimulationService>();
+
+builder.Services.AddControllers()
+    .AddJsonOptions(opts =>
+    {
+        opts.JsonSerializerOptions.Converters.Add(
+            new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -16,11 +43,11 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "LithoTwin API",
         Version = "v1",
-        Description = "Telemetry, exposure simulation, and wafer routing for EUV lithography tools"
+        Description = "Industrial digital twin — state-driven lifecycle management, " +
+                      "fault propagation, and telemetry simulation for EUV lithography tools"
     });
 });
 
-// allow local frontend dev
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>

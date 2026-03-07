@@ -1,3 +1,4 @@
+using LithoTwinAPI.Domain;
 using LithoTwinAPI.Services;
 using LithoTwinAPI.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -8,21 +9,36 @@ namespace LithoTwinAPI.Controllers;
 [Route("api/[controller]")]
 public class FactoryController : ControllerBase
 {
-    private readonly IManufacturingService _mfg;
+    private readonly MachineLifecycleService _lifecycle;
+    private readonly FaultService _faults;
+    private readonly TelemetryService _telemetry;
+    private readonly ExposureService _exposure;
+    private readonly AlertService _alerts;
 
-    public FactoryController(IManufacturingService mfg) => _mfg = mfg;
+    public FactoryController(
+        MachineLifecycleService lifecycle,
+        FaultService faults,
+        TelemetryService telemetry,
+        ExposureService exposure,
+        AlertService alerts)
+    {
+        _lifecycle = lifecycle;
+        _faults = faults;
+        _telemetry = telemetry;
+        _exposure = exposure;
+        _alerts = alerts;
+    }
 
     // ---- telemetry ----
 
     [HttpPost("telemetry")]
     public async Task<IActionResult> PostTelemetry(
-        [FromQuery] string machineId,
-        [FromQuery] double temperature)
+        [FromQuery] string machineId, [FromQuery] double temperature)
     {
         try
         {
-            await _mfg.UpdateTelemetryAsync(machineId, temperature);
-            return Ok(new { message = $"Telemetry updated for {machineId}" });
+            await _telemetry.IngestReadingAsync(machineId, temperature);
+            return Ok(new { message = $"Telemetry recorded for {machineId}" });
         }
         catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
         catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
@@ -31,44 +47,82 @@ public class FactoryController : ControllerBase
 
     [HttpGet("telemetry/{machineId}/history")]
     public async Task<IActionResult> GetTelemetryHistory(string machineId, [FromQuery] int count = 50)
-    {
-        var readings = await _mfg.GetTelemetryHistoryAsync(machineId, count);
-        return Ok(readings);
-    }
+        => Ok(await _telemetry.GetHistoryAsync(machineId, count));
 
     [HttpGet("telemetry/{machineId}/trend")]
     public async Task<IActionResult> GetTrend(string machineId)
-    {
-        var trend = await _mfg.GetTemperatureTrendAsync(machineId);
-        return Ok(new { machineId, trend });
-    }
+        => Ok(new { machineId, trend = await _telemetry.ComputeTrendAsync(machineId) });
 
-    /// text/csv download of all telemetry readings for a machine
     [HttpGet("telemetry/{machineId}/export")]
     public async Task<IActionResult> ExportCsv(string machineId)
     {
-        var csv = await _mfg.ExportTelemetryCsvAsync(machineId);
-        var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
-        return File(bytes, "text/csv", $"telemetry_{machineId}.csv");
+        var csv = await _telemetry.ExportCsvAsync(machineId);
+        return File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv", $"telemetry_{machineId}.csv");
     }
+
+    // ---- state transitions ----
+
+    [HttpPost("machines/{machineId}/transition")]
+    public async Task<IActionResult> TransitionState(
+        string machineId,
+        [FromQuery] MachineLifecycleState targetState,
+        [FromQuery] string reason = "Manual transition")
+    {
+        try
+        {
+            var transition = await _lifecycle.TransitionStateAsync(machineId, targetState, reason);
+            return Ok(transition);
+        }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+        catch (InvalidStateTransitionException ex) { return Conflict(new { error = ex.Message }); }
+    }
+
+    [HttpGet("machines/{machineId}/transitions")]
+    public async Task<IActionResult> GetTransitionHistory(string machineId)
+        => Ok(await _lifecycle.GetTransitionHistoryAsync(machineId));
+
+    // ---- fault management ----
+
+    [HttpPost("machines/{machineId}/fault")]
+    public async Task<IActionResult> InjectFault(
+        string machineId,
+        [FromQuery] FaultType faultType,
+        [FromQuery] string description = "")
+    {
+        try
+        {
+            var fault = await _faults.InjectFaultAsync(machineId, faultType, description);
+            return Ok(fault);
+        }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+    }
+
+    [HttpPost("machines/{machineId}/resolve-faults")]
+    public async Task<IActionResult> ResolveFaults(string machineId)
+    {
+        try
+        {
+            var resolved = await _faults.ResolveFaultsAsync(machineId);
+            return Ok(new { resolvedCount = resolved.Count, faults = resolved });
+        }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
+    }
+
+    [HttpGet("machines/{machineId}/faults")]
+    public async Task<IActionResult> GetActiveFaults(string machineId)
+        => Ok(await _faults.GetActiveFaultsAsync(machineId));
 
     // ---- wafer routing ----
 
     [HttpPost("route-wafer")]
     public async Task<IActionResult> RouteWafer()
-    {
-        var batch = await _mfg.AssignWaferBatchAsync();
-        return Ok(batch);
-    }
+        => Ok(await _exposure.RouteWaferBatchAsync());
 
     [HttpPost("batches/{id}/complete")]
     public async Task<IActionResult> CompleteBatch(Guid id)
     {
-        try
-        {
-            var batch = await _mfg.CompleteBatchAsync(id);
-            return Ok(batch);
-        }
+        try { return Ok(await _exposure.CompleteBatchAsync(id)); }
         catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
         catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
     }
@@ -76,40 +130,41 @@ public class FactoryController : ControllerBase
     // ---- machines ----
 
     [HttpGet("system-status")]
-    public async Task<IActionResult> GetStatus() => Ok(await _mfg.GetSystemStatusAsync());
+    public async Task<IActionResult> GetStatus()
+        => Ok(await _lifecycle.GetAllMachinesAsync());
 
     [HttpGet("machines/{machineId}/health")]
     public async Task<IActionResult> GetHealth(string machineId)
     {
-        try { return Ok(await _mfg.GetMachineHealthAsync(machineId)); }
+        try { return Ok(await _lifecycle.ComputeHealthScoreAsync(machineId)); }
         catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
     }
 
     [HttpGet("machines/{machineId}/maintenance-prediction")]
     public async Task<IActionResult> PredictMaintenance(string machineId)
     {
-        try { return Ok(await _mfg.PredictMaintenanceAsync(machineId)); }
+        try { return Ok(await _lifecycle.PredictMaintenanceAsync(machineId)); }
         catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
     }
 
-    // ---- alerts ----
+    // ---- alerts & stats ----
 
     [HttpGet("alerts")]
-    public async Task<IActionResult> GetAlerts() => Ok(await _mfg.GetActiveAlertsAsync());
+    public async Task<IActionResult> GetAlerts()
+        => Ok(await _alerts.GetActiveAlertsAsync());
 
     [HttpPost("alerts/{id}/acknowledge")]
     public async Task<IActionResult> AcknowledgeAlert(Guid id)
     {
         try
         {
-            await _mfg.AcknowledgeAlertAsync(id);
+            await _alerts.AcknowledgeAsync(id);
             return Ok(new { message = "Alert acknowledged" });
         }
         catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
     }
 
-    // ---- stats ----
-
     [HttpGet("stats")]
-    public async Task<IActionResult> GetStats() => Ok(await _mfg.GetFactoryStatsAsync());
+    public async Task<IActionResult> GetStats()
+        => Ok(await _alerts.GetFactoryStatsAsync());
 }

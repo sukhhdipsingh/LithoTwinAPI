@@ -8,16 +8,16 @@ namespace LithoTwinAPI.Controllers;
 [Route("api/[controller]")]
 public class ExposureController : ControllerBase
 {
-    private readonly IManufacturingService _mfg;
+    private readonly ExposureService _exposure;
 
-    public ExposureController(IManufacturingService mfg) => _mfg = mfg;
+    public ExposureController(ExposureService exposure) => _exposure = exposure;
 
     [HttpPost("run")]
     public async Task<IActionResult> RunExposure([FromBody] ExposureRequest req)
     {
         try
         {
-            var result = await _mfg.RunExposureAsync(req);
+            var result = await _exposure.RunExposureAsync(req);
             return Ok(result);
         }
         catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
@@ -30,7 +30,6 @@ public class ExposureController : ControllerBase
         if (string.IsNullOrEmpty(machineId))
             return BadRequest(new { error = "machineId is required" });
 
-        var results = await _mfg.GetExposureHistoryAsync(machineId);
-        return Ok(results);
+        return Ok(await _exposure.GetHistoryAsync(machineId));
     }
 }

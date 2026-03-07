@@ -13,9 +13,9 @@ public class LiveController : ControllerBase
     public LiveController(AppDbContext db) => _db = db;
 
     /// <summary>
-    /// SSE endpoint — streams new alerts as they come in.
-    /// HACK: uses polling internally because SignalR felt overkill for a demo.
-    /// Open this in a browser tab and it'll keep updating.
+    /// SSE endpoint — streams new alerts as they arrive.
+    /// Uses polling internally; SignalR is intentionally avoided to keep the
+    /// dependency surface small for what is a monitoring/diagnostic feature.
     /// </summary>
     [HttpGet("alerts")]
     public async Task StreamAlerts(CancellationToken ct)
@@ -51,7 +51,7 @@ public class LiveController : ControllerBase
             if (newAlerts.Any())
                 lastCheck = newAlerts.Last().Timestamp;
 
-            await Task.Delay(3000, ct); // poll every 3s — not great, not terrible
+            await Task.Delay(3000, ct);
         }
     }
 }
