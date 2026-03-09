@@ -1,27 +1,16 @@
 # LithoTwin API
 
-**A state-driven digital twin for EUV lithography machines.**
+**A software architecture experiment modeling the state machine and telemetry of an EUV lithography system.**
+
+I am a 2nd-year Computer Engineering student analyzing the complexity of semiconductor manufacturing systems. Rather than building a standard web application, this project is an exercise in modeling strict industrial constraints at the software level. 
+
+This repository contains a REST API that simulates the lifecycle, telemetry, and fault propagation of a lithography machine. The primary engineering goal was to enforce physical and logical rules using a **Finite State Machine (FSM)** and Domain-Driven Design (DDD) principles.
 
 Models the full machine lifecycle, from idle through calibration, production, fault detection, and maintenance — with explicit state constraints, deterministic fault propagation, and causal telemetry simulation.
 
 Built with .NET 7. Not a tutorial; an exercise in domain modeling under industrial constraints.
 
 ---
-
-## Engineering Motivation
-
-Since EUV lithography machines are very complex production equipment in semiconductor manufacturing, infact their operational lifecycle involves strict sequencing: a machine cannot jump from faulted to running, maintenance requires recalibration before production resumes, and faults must propagate causally into telemetry and throughput.
-
-This project models those constraints as a **finite state machine** enforced at the domain layer.
-
-**Design goals:**
-- Explicit state transitions — invalid transitions throw domain errors, not silent no-ops
-- Causal fault propagation — faults have documented, deterministic effects on system behavior
-- Deterministic simulation — telemetry output = f(machine_state, active_faults)
-- Auditable lifecycle — every state change is recorded with reason and timestamp
-
----
-
 ## System Overview
 
 ```
@@ -197,12 +186,10 @@ See [docs/design-decisions.md](docs/design-decisions.md) for 8 architectural dec
 
 ---
 
-## Possible Production Evolution
+## Future Engineering Considerations
 
-If this were a production system, the next engineering investments would be:
+If this architecture were to be scaled for a production environment or advanced research, the next implementation steps would include:
+1. **C++ Migration:** Transitioning the core FSM and simulation logic to modern C++ to align with the strict memory management and deterministic execution times required by Real-Time Operating Systems (RTOS) in machine control.
+2. **Event Sourcing:** Replacing the current state-persistence model with an append-only event log, allowing developers to replay the exact sequence of telemetry and faults that led to a machine failure.
+3. **Advanced Concurrency Handling:** Implementing robust mutexes or lock-free data structures to handle race conditions when multiple high-frequency sensor threads attempt to update the machine state simultaneously.
 
-- **Event sourcing** — reconstruct machine state from the transition log
-- **Rule engine** — replace hardcoded thermal thresholds with configurable fault detection rules
-- **Multi-machine dependency graphs** — model how a fault in one stage affects downstream routing
-- **Histogram-based overlay analysis** — replace scalar overlay with wafer-level spatial maps
-- **Distributed simulation** — separate the simulation engine from the API for independent scaling
