@@ -1,221 +1,208 @@
-#  LithoTwin API
+# LithoTwin API
 
-**REST API that simulates real-time monitoring and control of EUV lithography machines.**  
-Built with .NET 7 / ASP.NET Core — telemetry, thermal management, exposure simulation, and predictive maintenance for a virtual semiconductor fab.
+**A state-driven digital twin for EUV lithography machines.**
 
-> Think of it as a digital twin for ASML-style lithography tools: machines heat up, batches get routed, overlays drift, and the system reacts autonomously.
+Models the full machine lifecycle, from idle through calibration, production, fault detection, and maintenance — with explicit state constraints, deterministic fault propagation, and causal telemetry simulation.
 
----
-
-## What You're Looking At
-
-It's a "living" API. A background service (`ThermalDriftService`) constantly heats up the machines based on usage.
-If you send a `POST /exposure` request to a machine that is too hot, the physics engine calculates an overlay error (nanometers of drift) and fails the batch.
-
-<p align="center">
-  <img src="docs/full.png" alt="Swagger UI — API overview" width="700"/>
-</p>
-
-## Some Examples:
-GET Reticle
-
-<p align="center">
-  <img src="docs/reticle.png" alt="Swagger UI — API overview" width="700"/>
-</p>
-
-
+Built with .NET 7. Not a tutorial; an exercise in domain modeling under industrial constraints.
 
 ---
 
-## Key Features & .NET Patterns Used
+## Engineering Motivation
 
-###  Telemetry + Thermal Control
-- Ingest temperature readings, trigger **automatic cooling on overheat** with 2°C hysteresis
-- Background `ThermalDriftService` (`BackgroundService`) keeps machines "alive" with simulated temperature changes
-- **Trend detection** on recent readings (rising / falling / stable)
+Since EUV lithography machines are very complex production equipment in semiconductor manufacturing, infact their operational lifecycle involves strict sequencing: a machine cannot jump from faulted to running, maintenance requires recalibration before production resumes, and faults must propagate causally into telemetry and throughput.
 
-```
-GET /api/factory/machines/NXE-3400B/health
-```
-```json
-{
-  "machineId": "NXE-3400B",
-  "overallScore": 62.2,
-  "comment": "running warm, keep an eye on it",
-  "breakdown": {
-    "temperature": { "score": 33.9, "weight": 0.5, "detail": "21.6°C / 24.0°C" },
-    "uptime":      { "score": 76.1, "weight": 0.2, "detail": "1248h" },
-    "state":       { "score": 100,  "weight": 0.3, "detail": "Active" }
-  }
-}
-```
+This project models those constraints as a **finite state machine** enforced at the domain layer.
 
-###  EUV Exposure Simulation
-- Simulated exposures with dose/focus parameters → computed **overlay error** based on thermal state
-- Overlay model: `0.08 nm/°C` thermal expansion + focus penalty + random noise
-- Alerts if overlay exceeds the 1.5nm spec limit
+**Design goals:**
+- Explicit state transitions — invalid transitions throw domain errors, not silent no-ops
+- Causal fault propagation — faults have documented, deterministic effects on system behavior
+- Deterministic simulation — telemetry output = f(machine_state, active_faults)
+- Auditable lifecycle — every state change is recorded with reason and timestamp
+
+---
+
+## System Overview
 
 ```
-POST /api/exposure/run
-{ "machineId": "NXE-3400B", "doseEnergy": 30, "focusOffset": 0.5, "layerId": "M1" }
-```
+Domain/                          Core constraints (no infrastructure dependencies)
+├── MachineLifecycleState        5-state lifecycle enum
+├── MachineStateMachine          Centralized FSM with explicit transition rules
+├── InvalidStateTransitionException   Typed domain error
+├── FaultType                    ThermalOverload, LaserDegradation, SensorFailure
+└── SystemConstants              Named physical + operational constants
 
-###  Smart Wafer Routing
-- Wafer batches auto-assigned to the **coldest active machine** (max thermal headroom)
-- If no machines available → batch rerouted + system alert
-- Full batch lifecycle: created → processing → completed
+Services/                        Business logic — each service owns one behavioral domain
+├── MachineLifecycleService      State transitions via FSM, health scoring, maintenance prediction
+├── FaultService                 Fault injection, causal propagation, resolution during maintenance
+├── TelemetryService             Sensor ingestion with fault-aware noise, trend analysis
+├── ExposureService              Overlay error computation, wafer routing, batch lifecycle
+└── AlertService                 System alerts, factory statistics
 
-###  Predictive Maintenance
-- Maintenance forecast based on uptime cycles + **overlay drift monitoring**
-- If recent exposures show degrading overlay → urgency bumped automatically
+Simulation/                      Background simulation loop
+├── SimulationEngine             Pure thermal drift computation: f(state, faults) → drift
+└── ThermalSimulationService     BackgroundService executing the simulation tick
 
-```
-GET /api/factory/machines/NXE-3400B/maintenance-prediction
-```
-```json
-{
-  "machineId": "NXE-3400B",
-  "estimatedHoursUntilMaintenance": 752,
-  "urgency": "not_due",
-  "overlayDegrading": false
-}
-```
+Controllers/                     Thin HTTP surface — zero business logic
+├── FactoryController            State transitions, faults, telemetry, alerts
+├── ExposureController           Exposure simulation
+├── ReticleController            Reticle CRUD + contamination
+└── LiveController               Server-Sent Events for real-time alerts
 
-###  Live Alerts (SSE)
-- Server-Sent Events endpoint streams alerts in real time — open in browser and watch events flow
-- Overheat, cooling, overlay violations, routing failures
-
-<p align="center">
-  <img src="docs/alerts.png" alt="Swagger UI — API overview" width="700"/>
-</p>
-
-###  Factory Stats
-
-```
-GET /api/factory/stats
-```
-```json
-{
-  "machines": { "total": 3, "active": 2, "cooling": 0, "maintenance": 1 },
-  "production": {
-    "totalExposures": 175710,
-    "totalWafersProcessed": 7028,
-    "avgTemperature": 22.3
-  }
-}
+docs/                            Engineering documentation
+├── architecture.md              Layer responsibilities, data flow, simulation loop
+├── design-decisions.md          8 architectural decisions with reasoning and trade-offs
+└── system-invariants.md         22 named system invariants
 ```
 
 ---
 
-## .NET Patterns Demonstrated
+## Machine Lifecycle (Finite State Machine)
 
-| Pattern | Where |
-|---------|-------|
-| **Dependency Injection** | `IManufacturingService` → `ManufacturingService` via `AddScoped` |
-| **BackgroundService** | `ThermalDriftService` — long-running thermal simulation with scoped DB access |
-| **EF Core InMemory** | `AppDbContext` with seed data (3 ASML machines + 3 reticles) |
-| **Repository / Service Layer** | Controllers are thin, all logic lives in `ManufacturingService` |
-| **Server-Sent Events** | `LiveController` — manual SSE with `text/event-stream` |
-| **Async/Await** | Full async pipeline, controllers → services → EF Core queries |
-| **Exception → HTTP mapping** | `KeyNotFoundException` → 404, `InvalidOperationException` → 409 |
-| **Swagger / OpenAPI** | Auto-generated docs via Swashbuckle |
-| **xUnit Testing** | 17 tests covering core business logic |
+```
+         ┌─────────────────────────────────────────┐
+         │                                         │
+    ┌────▼───┐    ┌────────────┐    ┌─────────┐   │
+    │  Idle  ├───►│ Calibrating├───►│ Running │   │
+    └────┬───┘    └─────┬──────┘    └──┬──┬───┘   │
+         │              │ (abort)      │  │       │
+         │              ▼              │  │       │
+         │           ┌──────┐          │  │       │
+         │           │ Idle │          │  │       │
+         │           └──────┘          │  │       │
+         │                     ┌───────┘  │       │
+         │                     ▼          │       │
+    ┌────▼────────┐    ┌───────────┐      │       │
+    │ Maintenance │◄───┤  Faulted  │◄─────┘       │
+    └──────┬──────┘    └───────────┘              │
+           │                                      │
+           └──────► Calibrating ──────► Running ──┘
+```
+
+**Transition rules** — enforced by `MachineStateMachine`, not scattered conditionals:
+
+| From | Allowed Targets |
+|---|---|
+| Idle | Calibrating, Maintenance |
+| Calibrating | Running, Idle (abort) |
+| Running | Faulted, Maintenance (planned), Calibrating (recalibration) |
+| Faulted | Maintenance (mandatory — only exit path) |
+| Maintenance | Calibrating (recalibrate), Idle (shutdown) |
+
+**Explicitly forbidden:** Running → Idle, Faulted → Running, Faulted → Idle, Faulted → Calibrating.
+
+Invalid transitions throw `InvalidStateTransitionException` with source/target state.
 
 ---
 
-## Architecture
+## System Invariants
 
-```
-Controllers/
-├── FactoryController      telemetry, routing, health, stats, maintenance
-├── ExposureController     exposure simulation with overlay model
-├── ReticleController      reticle CRUD + contamination tracking
-└── LiveController         SSE real-time alert stream
+The system enforces 22 named invariants (see [docs/system-invariants.md](docs/system-invariants.md)). Key examples:
 
-Services/
-├── ManufacturingService   core business logic (~400 lines)
-└── ThermalDriftService    BackgroundService — simulates thermal drift
-
-Data/
-└── AppDbContext            EF Core InMemory, seeded with ASML machine models
-
-Models/
-├── Machine                state machine (Active → Cooling → Active)
-├── WaferBatch             batch lifecycle tracking
-├── ExposureResult         overlay error X/Y + pass/fail
-├── TelemetryReading       temperature time series
-├── Alert                  severity levels + acknowledgment
-└── Reticle                contamination + usage tracking
-```
-
-Seeded machines: `NXE-3400B`, `NXE-3600D` (active), `TWINSCAN-EXE` (maintenance).
+- **INV-2:** A machine in `Faulted` state cannot transition to `Running`
+- **INV-7:** Fault injection on a `Running` machine automatically transitions it to `Faulted`
+- **INV-9:** Fault resolution is only permitted in `Maintenance` state
+- **INV-14:** Telemetry output = `f(machine_state, active_faults)` — always causally explainable
+- **INV-16:** Exposures are only permitted on machines in `Running` state
+- **INV-19:** Wafer routing selects the coldest Running machine (maximum thermal headroom)
 
 ---
 
-## Quick Start
+## Fault Propagation Model
 
-```bash
-dotnet run
-# → Swagger UI at http://localhost:5159/swagger
-```
+Faults are not decorative. Each type has a documented, causal effect:
 
-```bash
-dotnet test LithoTwinAPI.Tests
-# → 17 tests passing
-```
+| Fault Type | Telemetry Effect | Throughput Effect | State Effect |
+|---|---|---|---|
+| `ThermalOverload` | +0.5°C/tick temperature spike | None | Running → Faulted |
+| `LaserDegradation` | Overlay error increases | −30% per fault | Running → Faulted |
+| `SensorFailure` | ±2°C noise injected | None | Running → Faulted |
 
-## Stack
+**Persistence:** Faults remain active until explicitly resolved during Maintenance. After resolution, the machine must recalibrate before resuming production.
 
-- .NET 7 / ASP.NET Core
-- Entity Framework Core (InMemory provider)
-- xUnit
-- Swashbuckle (Swagger / OpenAPI)
-- BackgroundService for thermal simulation
-- Server-Sent Events for live monitoring
+**Determinism:** System behavior is always `f(machine_state, active_faults)`. There is no unexplained randomness.
 
 ---
 
-## All Endpoints
+## Example System Behavior
 
-<details>
-<summary>Click to expand full endpoint list</summary>
+**Normal production cycle:**
+```
+Idle → Calibrating → Running → [exposures] → Maintenance → Calibrating → Running
+```
 
-### Factory (`/api/factory`)
+**Fault scenario:**
+```
+Running → [ThermalOverload detected] → Faulted
+Faulted → Maintenance → [resolve faults] → Calibrating → Running
+```
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| `POST` | `/telemetry?machineId=X&temperature=Y` | Push temperature reading |
-| `GET`  | `/telemetry/{machineId}/history?count=50` | Temperature history |
-| `GET`  | `/telemetry/{machineId}/trend` | Trend detection |
-| `GET`  | `/telemetry/{machineId}/export` | CSV download |
-| `POST` | `/route-wafer` | Assign wafer batch |
-| `POST` | `/batches/{id}/complete` | Complete batch |
-| `GET`  | `/system-status` | All machines |
-| `GET`  | `/machines/{machineId}/health` | Health score |
-| `GET`  | `/machines/{machineId}/maintenance-prediction` | Maintenance forecast |
-| `GET`  | `/alerts` | Active alerts |
-| `POST` | `/alerts/{id}/acknowledge` | Acknowledge alert |
-| `GET`  | `/stats` | Factory stats |
+**Forbidden path (produces domain error):**
+```
+Faulted → Running  ✗  InvalidStateTransitionException
+Running → Idle     ✗  InvalidStateTransitionException
+```
 
-### Exposure (`/api/exposure`)
+---
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| `POST` | `/run` | Run exposure simulation |
-| `GET`  | `/history?machineId=X` | Exposure history |
+## Architecture Overview
 
-### Reticle (`/api/reticle`)
+The system separates concerns into four layers:
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| `GET`  | `/` | List reticles |
-| `GET`  | `/{id}` | Reticle detail |
-| `POST` | `/{id}/inspect` | Simulate inspection |
+| Layer | Responsibility | Example |
+|---|---|---|
+| **Domain** | Rules and constraints (no I/O) | `MachineStateMachine` validates transitions |
+| **Services** | Business logic and side effects | `FaultService.InjectFaultAsync()` applies degradation |
+| **Simulation** | Time-driven background computation | `SimulationEngine.ComputeThermalDrift()` |
+| **API** | HTTP surface, input validation | Controllers delegate to services |
 
-### Live (`/api/live`)
+See [docs/architecture.md](docs/architecture.md) for data flow diagrams and simulation loop details.
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| `GET`  | `/alerts` | SSE stream |
+---
 
-</details>
+## Technology Stack
+
+| Component | Technology |
+|---|---|
+| Runtime | .NET 7 / ASP.NET Core |
+| Persistence | EF Core (InMemory default, SQLite opt-in) |
+| Background processing | `BackgroundService` for thermal simulation |
+| Real-time | Server-Sent Events |
+| Testing | xUnit (32 tests: FSM rules, fault propagation, service behavior) |
+| API docs | Swagger / OpenAPI |
+
+---
+
+## Design Philosophy
+
+- **Explicit constraints over feature breadth.** The system has 5 states and 22 invariants, not 50 endpoints. Constraints are the feature.
+- **Deterministic behavior over randomness.** Every telemetry value traces back to a cause. Random noise exists only where it models a real physical phenomenon (sensor jitter, thermal fluctuation).
+- **Domain modeling as a reasoning tool.** The FSM isn't decorative — it prevents invalid states at compile-time-equivalent strength. A machine cannot silently skip maintenance.
+- **Systems should communicate their rules.** Rules live in `MachineStateMachine`, not scattered across controllers. A reviewer opening one file sees the complete lifecycle.
+
+See [docs/design-decisions.md](docs/design-decisions.md) for 8 architectural decisions with reasoning and trade-offs.
+
+---
+
+## Intentional Simplifications
+
+| What's simplified | Why |
+|---|---|
+| No persistence by default | Focus is system modeling, not database engineering. SQLite available via config. |
+| No UI | Backend system design exercise, not full-stack application |
+| Linear overlay model | Real EUV overlay depends on dozens of variables. Linear approximation demonstrates causal relationships without pretending to be a physics engine. |
+| No authentication | Out of scope for system modeling |
+| Single process | Complexity budget is spent on domain modeling, not infrastructure plumbing |
+| No real hardware interface | System simulates machine behavior based on domain rules |
+
+---
+
+## Possible Production Evolution
+
+If this were a production system, the next engineering investments would be:
+
+- **Event sourcing** — reconstruct machine state from the transition log
+- **Rule engine** — replace hardcoded thermal thresholds with configurable fault detection rules
+- **Multi-machine dependency graphs** — model how a fault in one stage affects downstream routing
+- **Histogram-based overlay analysis** — replace scalar overlay with wafer-level spatial maps
+- **Distributed simulation** — separate the simulation engine from the API for independent scaling
