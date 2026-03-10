@@ -90,6 +90,9 @@ public class FaultService
         return activeFaults;
     }
 
+    /// <summary>
+    /// Returns all unresolved faults for the specified machine, ordered by most recent first.
+    /// </summary>
     public async Task<List<MachineFault>> GetActiveFaultsAsync(string machineId)
     {
         return await _db.MachineFaults

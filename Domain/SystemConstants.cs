@@ -63,4 +63,12 @@ public static class SystemConstants
 
     /// <summary>Noise amplitude (°C) added to sensor readings when SensorFailure is active.</summary>
     public const double SensorFailureNoiseAmplitudeC = 2.0;
+
+    // --- Reticle contamination ---
+    /// <summary>Maximum reticle contamination level (0–1) before mandatory replacement.</summary>
+    public const double ReticleContaminationReplacementThreshold = 0.85;
+
+    // --- Ambient cooling ---
+    /// <summary>Passive cooling rate (°C/tick) when machine drifts toward ambient temperature.</summary>
+    public const double AmbientCoolingRatePerTick = 0.01;
 }

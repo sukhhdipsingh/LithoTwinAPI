@@ -1,3 +1,5 @@
+using LithoTwinAPI.Domain;
+
 namespace LithoTwinAPI.Models;
 
 public class Reticle
@@ -12,5 +14,6 @@ public class Reticle
     // 0.0 = clean, 1.0 = needs pellicle replacement
     public double ContaminationLevel { get; set; }
 
-    public bool IsUsable => ContaminationLevel < 0.8 && UsageCount < MaxUsages;
+    public bool IsUsable => ContaminationLevel < SystemConstants.ReticleContaminationReplacementThreshold
+                            && UsageCount < MaxUsages;
 }

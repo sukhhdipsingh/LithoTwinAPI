@@ -140,6 +140,17 @@ public class FactoryController : ControllerBase
         catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
     }
 
+    [HttpGet("machines/compare")]
+    public async Task<IActionResult> GetComparison([FromQuery] string ids)
+    {
+        var machineIds = ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        if (machineIds.Count < 2)
+            return BadRequest(new { error = "Provide at least 2 comma-separated machine IDs" });
+
+        try { return Ok(await _lifecycle.CompareMachinesAsync(machineIds)); }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+    }
+
     [HttpGet("machines/{machineId}/maintenance-prediction")]
     public async Task<IActionResult> PredictMaintenance(string machineId)
     {

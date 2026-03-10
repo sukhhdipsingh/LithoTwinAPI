@@ -21,8 +21,8 @@ public static class SimulationEngine
     /// 
     /// State-dependent behavior:
     ///   Running → gradual heat accumulation from EUV source and wafer stage
-    ///   Calibrating → moderate heat from alignment laser operation
-    ///   Idle → slow drift toward ambient (near-zero change)
+    ///   Calibrating → moderate heat from alignment laser and stage positioning
+    ///   Idle → passive drift toward ambient baseline (Newton's cooling approximation)
     ///   Faulted → slight cooling as machine is not processing
     ///   Maintenance → no thermal simulation (returns 0)
     /// </summary>

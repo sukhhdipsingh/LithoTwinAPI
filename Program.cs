@@ -44,7 +44,16 @@ builder.Services.AddSwaggerGen(c =>
         Title = "LithoTwin API",
         Version = "v1",
         Description = "Industrial digital twin — state-driven lifecycle management, " +
-                      "fault propagation, and telemetry simulation for EUV lithography tools"
+                      "fault propagation, and telemetry simulation for EUV lithography tools",
+        Contact = new Microsoft.OpenApi.Models.OpenApiContact
+        {
+            Name = "Sukhdip Singh",
+            Url = new Uri("https://github.com/sukhdipsingh")
+        },
+        License = new Microsoft.OpenApi.Models.OpenApiLicense
+        {
+            Name = "MIT"
+        }
     });
 });
 

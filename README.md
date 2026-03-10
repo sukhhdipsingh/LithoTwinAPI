@@ -157,7 +157,7 @@ See [docs/architecture.md](docs/architecture.md) for data flow diagrams and simu
 | Persistence | EF Core (InMemory default, SQLite opt-in) |
 | Background processing | `BackgroundService` for thermal simulation |
 | Real-time | Server-Sent Events |
-| Testing | xUnit (32 tests: FSM rules, fault propagation, service behavior) |
+| Testing | xUnit (32 tests: FSM transition rules, fault propagation chains, service behavior) |
 | API docs | Swagger / OpenAPI |
 
 ---

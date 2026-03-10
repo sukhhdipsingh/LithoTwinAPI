@@ -161,6 +161,52 @@ public class MachineLifecycleService
         };
     }
 
+    /// <summary>
+    /// Compares multiple machines side-by-side across key operational metrics.
+    /// Generates a recommendation identifying the best candidate for production.
+    /// </summary>
+    public async Task<MachineComparison> CompareMachinesAsync(List<string> machineIds)
+    {
+        var comparison = new MachineComparison { MachineCount = machineIds.Count };
+
+        foreach (var id in machineIds)
+        {
+            var machine = await FindMachineOrThrowAsync(id);
+            var faultCount = await _db.MachineFaults
+                .Where(f => f.MachineId == id && f.ResolvedAt == null)
+                .CountAsync();
+
+            double headroom = machine.MaxOperatingTemp > 0
+                ? Math.Round((1.0 - machine.CurrentTemperature / machine.MaxOperatingTemp) * 100, 1)
+                : 0;
+
+            comparison.Entries.Add(new MachineComparisonEntry
+            {
+                MachineId = id,
+                State = machine.State.ToString(),
+                CurrentTemperature = machine.CurrentTemperature,
+                MaxOperatingTemp = machine.MaxOperatingTemp,
+                TemperatureHeadroomPercent = headroom,
+                ThroughputFactor = machine.ThroughputFactor,
+                UptimeHours = machine.UptimeHours,
+                ExposureCount = machine.ExposureCount,
+                ActiveFaultCount = faultCount
+            });
+        }
+
+        // Recommend the Running machine with most thermal headroom and no faults
+        var bestCandidate = comparison.Entries
+            .Where(e => e.State == MachineLifecycleState.Running.ToString() && e.ActiveFaultCount == 0)
+            .OrderByDescending(e => e.TemperatureHeadroomPercent)
+            .FirstOrDefault();
+
+        comparison.Recommendation = bestCandidate != null
+            ? $"{bestCandidate.MachineId} — best thermal headroom ({bestCandidate.TemperatureHeadroomPercent}%) with no active faults"
+            : "No fault-free Running machines available for production";
+
+        return comparison;
+    }
+
     // ---- scoring helpers ----
 
     private static double ComputeTemperatureScore(Machine m)
