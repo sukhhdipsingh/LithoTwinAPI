@@ -2,6 +2,10 @@ namespace LithoTwinAPI.Models;
 
 public enum BatchStatus { Pending, Processing, Rerouted, Completed }
 
+/// <summary>
+/// A batch of wafers routed to a machine for exposure processing.
+/// Status progresses from Pending → Processing → Completed, or Rerouted if no machines are available.
+/// </summary>
 public class WaferBatch
 {
     public Guid Id { get; set; } = Guid.NewGuid();
