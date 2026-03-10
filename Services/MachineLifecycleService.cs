@@ -207,7 +207,6 @@ public class MachineLifecycleService
         return comparison;
     }
 
-    // ---- scoring helpers ----
 
     private static double ComputeTemperatureScore(Machine m)
     {

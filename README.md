@@ -33,7 +33,7 @@ Simulation/                      Background simulation loop
 └── ThermalSimulationService     BackgroundService executing the simulation tick
 
 Controllers/                     Thin HTTP surface — zero business logic
-├── FactoryController            State transitions, faults, telemetry, alerts
+├── FactoryController            State transitions, faults, telemetry, alerts, machine comparison
 ├── ExposureController           Exposure simulation
 ├── ReticleController            Reticle CRUD + contamination
 └── LiveController               Server-Sent Events for real-time alerts
@@ -41,6 +41,7 @@ Controllers/                     Thin HTTP surface — zero business logic
 docs/                            Engineering documentation
 ├── architecture.md              Layer responsibilities, data flow, simulation loop
 ├── design-decisions.md          8 architectural decisions with reasoning and trade-offs
+├── api-changelog.md             Recent API additions and improvements
 └── system-invariants.md         22 named system invariants
 ```
 

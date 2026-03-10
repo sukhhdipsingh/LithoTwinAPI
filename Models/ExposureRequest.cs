@@ -1,10 +1,17 @@
 namespace LithoTwinAPI.Models;
 
-// kept it simple — just what the caller needs to provide
+/// <summary>
+/// Parameters for a single EUV exposure shot.
+/// </summary>
 public class ExposureRequest
 {
     public string MachineId { get; set; } = string.Empty;
-    public double DoseEnergy { get; set; } = 30.0;  // mJ/cm², typical for EUV
-    public double FocusOffset { get; set; }          // nm, 0 = nominal
+
+    /// <summary>EUV dose energy in mJ/cm². Typical EUV dose is 30 mJ/cm².</summary>
+    public double DoseEnergy { get; set; } = 30.0;
+
+    /// <summary>Focus offset from ideal plane in nm. Zero means nominally focused.</summary>
+    public double FocusOffset { get; set; }
+
     public string LayerId { get; set; } = "M1";
 }

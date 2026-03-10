@@ -2,7 +2,6 @@ namespace LithoTwinAPI.Models;
 
 /// <summary>
 /// Snapshot comparison of multiple machines.
-/// Used to evaluate relative health and production readiness across the fleet.
 /// </summary>
 public class MachineComparison
 {
