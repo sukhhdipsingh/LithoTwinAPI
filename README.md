@@ -1,8 +1,8 @@
 # LithoTwin API
 
-**A software architecture experiment modeling the state machine and telemetry of an EUV lithography system.**
+A software architecture experiment modeling the state machine and telemetry of an EUV lithography system.
 
-I am a 2nd-year Computer Engineering student analyzing the complexity of semiconductor manufacturing systems. Rather than building a standard web application, this project is an exercise in modeling strict industrial constraints at the software level. 
+I am a 2nd-year Computer Engineering student analyzing the complexity of semiconductor manufacturing systems.This project models the strict operational constraints of semiconductor manufacturing at the software level.
 
 This repository contains a REST API that simulates the lifecycle, telemetry, and fault propagation of a lithography machine. The primary engineering goal was to enforce physical and logical rules using a **Finite State Machine (FSM)** and Domain-Driven Design (DDD) principles.
 
@@ -71,7 +71,7 @@ docs/                            Engineering documentation
 
 **Transition rules** — enforced by `MachineStateMachine`, not scattered conditionals:
 
-| From | Allowed Targets |
+| From | Allowed targets |
 |---|---|
 | Idle | Calibrating, Maintenance |
 | Calibrating | Running, Idle (abort) |
@@ -160,18 +160,6 @@ See [docs/architecture.md](docs/architecture.md) for data flow diagrams and simu
 | Real-time | Server-Sent Events |
 | Testing | xUnit (32 tests: FSM transition rules, fault propagation chains, service behavior) |
 | API docs | Swagger / OpenAPI |
-
----
-
-## Design Philosophy
-
-- **Explicit constraints over feature breadth.** The system has 5 states and 22 invariants, not 50 endpoints. Constraints are the feature.
-- **Deterministic behavior over randomness.** Every telemetry value traces back to a cause. Random noise exists only where it models a real physical phenomenon (sensor jitter, thermal fluctuation).
-- **Domain modeling as a reasoning tool.** The FSM isn't decorative — it prevents invalid states at compile-time-equivalent strength. A machine cannot silently skip maintenance.
-- **Systems should communicate their rules.** Rules live in `MachineStateMachine`, not scattered across controllers. A reviewer opening one file sees the complete lifecycle.
-
-See [docs/design-decisions.md](docs/design-decisions.md) for 8 architectural decisions with reasoning and trade-offs.
-
 ---
 
 ## Intentional Simplifications
@@ -190,7 +178,6 @@ See [docs/design-decisions.md](docs/design-decisions.md) for 8 architectural dec
 ## Future Engineering Considerations
 
 If this architecture were to be scaled for a production environment or advanced research, the next implementation steps would include:
-1. **C++ Migration:** Transitioning the core FSM and simulation logic to modern C++ to align with the strict memory management and deterministic execution times required by Real-Time Operating Systems (RTOS) in machine control.
-2. **Event Sourcing:** Replacing the current state-persistence model with an append-only event log, allowing developers to replay the exact sequence of telemetry and faults that led to a machine failure.
-3. **Advanced Concurrency Handling:** Implementing robust mutexes or lock-free data structures to handle race conditions when multiple high-frequency sensor threads attempt to update the machine state simultaneously.
-
+1. **C++ Migration:** Moving the core FSM and simulation logic to C++ would align better with the memory management requirements of real-time machine control.
+2. **Event Sourcing:**Replacing the state model with an append-only event log would let you replay the exact sequence of faults and telemetry that led to a failure.
+3. **Advanced Concurrency Handling:**The concurrency model would need proper lock-free structures if multiple sensor threads were hitting state simultaneously at high frequency.
