@@ -26,7 +26,7 @@ public class ThermalSimulationService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Delay(2000, stoppingToken);
-        _logger.LogInformation("Thermal simulation started — tick interval: 15s");
+        _logger.LogInformation("Thermal simulation started");
 
         while (!stoppingToken.IsCancellationRequested)
         {
