@@ -13,7 +13,5 @@ public class ExposureResult
     public double OverlayErrorY { get; set; }  // nm
 
     public bool Passed { get; set; }
-    /// <summary>Human-readable reason when Passed is false; null on success.</summary>
-    public string? FailureReason { get; set; }
     public DateTime ExposedAt { get; set; } = DateTime.UtcNow;
 }
